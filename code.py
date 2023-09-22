@@ -1,6 +1,10 @@
 """
 Code for W1MJ Fox 2.0
-Updated 9/19/2023 by Eliot Mayer W1MJ
+
+Updated 9/22/2023 by Eliot Mayer W1MJ
+  - Added trasmission of on_demand_end message when On Demand goes inactive
+
+Updated 9/20/2023 by Eliot Mayer W1MJ
   - Added On Demand mode
   - Sync messages to start at start of minute (relative to Run button)
   - For battery voltage, now averaging multiple samples
@@ -36,9 +40,10 @@ t_start_hr_min = [8, 0]  # Daily start time [hour, min]; use 5-minute intervals
 t_stop_hr_min = [20, 0]  # Daily stop time [hour, min]; use 5-minute intervals
 
 # ===== On Demand Mode Settings =====
-t_on_demand_run_time = [0, 5]  # Run time [hours, minutes]; use 5-minute intervals
+# Run time [hours, minutes]; use 5-minute intervals
+t_on_demand_run_time = [0, 5]
 rx_detect_min_v = 0.25         # Minimum RX level for On Demand request in volts
-rx_detect_min_t = 1.50         # Minimum RX time for On Demand request in seconds
+rx_detect_min_t = 2.00         # Minimum RX time for On Demand request in seconds
 
 # ===== Battery Settings =====
 v_bat_min = 12.2             # Minimum battery voltage for transmitting
@@ -50,6 +55,10 @@ v_bat_correction = 0.985     # Battery voltage correction factor to match DMM
 ###############################################
 
 def talk(msg, msg_folder):
+    if type(msg) == str:  # If message is a string, convert to list
+        msg_temp = msg
+        msg = ['?'] * 1
+        msg[0] = msg_temp
     print(f"Number of Messages: {len(msg)}")
     ptt.value = True
     for i in range(len(msg)):
@@ -117,14 +126,13 @@ def on_demand_startup():
     global t_start_mins, t_stop_mins
     t_now = time.time() + t_correction
     t_start = t_now
-    t_stop = t_start + t_on_demand_run_time[0]*60*60 + t_on_demand_run_time[1]*60
+    t_stop = t_start + \
+        t_on_demand_run_time[0]*60*60 + t_on_demand_run_time[1]*60
     t_start_mins = time_of_day_mins(t_start)
     t_stop_mins = time_of_day_mins(t_stop)
     print("In on_demand_startup")
     print(f"t_start_mins, t_stop_mins = {t_start_mins}, {t_stop_mins}")
-    msg = ['?'] * 1
-    msg[0] = 'on_demand_intro'
-    talk(msg, '/talk')
+    talk('on_demand_intro', '/talk')
     announce_time(t_stop)
 
 
@@ -132,21 +140,21 @@ def await_on_demand_request():
     # Check for received audio (rx_detect)
     while True:
         if rx_detect.value * 3.3 / 65536 > rx_detect_min_v:  # Initial detection
-          # Check multiple RX level samples to minimize false triggering
-          n_samples = 5
-          samples_over_min_v = 0
-          for i in range(n_samples):
-              t_sample = rx_detect_min_t / n_samples
-              time.sleep(t_sample)
-              if rx_detect.value * 3.3 / 65536 > rx_detect_min_v:
-                  samples_over_min_v = samples_over_min_v + 1
-          # If most of the samples are above the minimum level, request is good
-          if samples_over_min_v / n_samples >= 0.75:
-              # Wait for request to end before proceeding
-              while rx_detect.value * 3.3 / 65536 > rx_detect_min_v:
-                  pass
-              time.sleep(1)
-              break
+            # Check multiple RX level samples to minimize false triggering
+            n_samples = 5
+            samples_over_min_v = 0
+            for i in range(n_samples):
+                t_sample = rx_detect_min_t / n_samples
+                time.sleep(t_sample)
+                if rx_detect.value * 3.3 / 65536 > rx_detect_min_v:
+                    samples_over_min_v = samples_over_min_v + 1
+            # If most of the samples are above the minimum level, request is good
+            if samples_over_min_v / n_samples >= 0.75:
+                # Wait for request to end before proceeding
+                while rx_detect.value * 3.3 / 65536 > rx_detect_min_v:
+                    pass
+                time.sleep(1)
+                break
 
 
 ###############################################
@@ -162,7 +170,7 @@ ptt = digitalio.DigitalInOut(board.GP15)       # Pin 20
 ptt.direction = digitalio.Direction.OUTPUT
 ptt.value = False
 
-pwm_audio = audiopwmio.PWMAudioOut(board.GP11) # Pin 15
+pwm_audio = audiopwmio.PWMAudioOut(board.GP11)  # Pin 15
 
 pb_hour = digitalio.DigitalInOut(board.GP2)    # Pin 4
 pb_hour.direction = digitalio.Direction.INPUT
@@ -245,7 +253,8 @@ print(f"fox_mode = {fox_mode}")
 # Loop through messages if (1) time is between t_start_hr_min & t_stop_hr_min,
 # and (2) battery voltage is > v_bat_min
 
-active_state = False   # This is used to starte with 1st message when going active.
+# This is used to starte with 1st message when going active.
+active_state = False
 
 if fox_mode == "On Demand":
     await_on_demand_request()
@@ -253,11 +262,13 @@ if fox_mode == "On Demand":
 
 while True:
     t_now = time.time() + t_correction
+    print (f"t_now:  {t_now}")
     t_now_mins = time_of_day_mins(t_now)
     t_active = t_now_mins >= t_start_mins and t_now_mins <= t_stop_mins
     bat_ok = bat_mon.value * v_bat_scaling >= v_bat_min
     print("Message Main Loop")
-    print(f"t_now_mins, t_start_mins, t_stop_mins = {t_now_mins}, {t_start_mins}, {t_stop_mins}")
+    print(
+        f"t_now_mins, t_start_mins, t_stop_mins = {t_now_mins}, {t_start_mins}, {t_stop_mins}")
     if t_active and bat_ok:
         if not(active_state):
             active_state = True
@@ -272,20 +283,20 @@ while True:
             announce_battery_voltage(v_bat)
             msg_num = 0
         else:                            # Transmit regular message
-            msg = ['?'] * 1
-            msg[0] = message_list[msg_num]
-            talk(msg, '/messages')
+            talk(message_list[msg_num], '/messages')
             msg_num = msg_num + 1
         # Wait until it is time for the next message
         while t_now < t_msg_start + t_message_interval_s:
             t_now = time.time() + t_correction
             pass
-    elif fox_mode == "On Demand" and not(t_active):  # Wait for new On Demand request
+    # Wait for new On Demand request
+    elif fox_mode == "On Demand" and not(t_active):
+        talk('on_demand_end', '/talk')
         print("On Demand and not t_active; wait for next request")
         active_state = False
         await_on_demand_request()
         on_demand_startup()
     else:  # Scheduled mode, not active
-        active_state = False 
+        active_state = False
 
 # The End
