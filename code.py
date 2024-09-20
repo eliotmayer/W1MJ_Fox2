@@ -1,6 +1,9 @@
 """
 Code for W1MJ Fox 2.0
 
+Updated 9/20/2024 by Eliot Mayer W1MJ
+  - Improved time setting; hours button only announces hour, minutes button only minutes.
+
 Updated 9/22/2023 by Eliot Mayer W1MJ
   - Added trasmission of on_demand_end message when On Demand goes inactive
 
@@ -36,12 +39,12 @@ t_message_interval_s = 60    # Time between start of messages (seconds)
 t_power_up_hr_min = [8, 0]
 
 # ===== Scheduled Mode Settings =====
-t_start_hr_min = [8, 0]  # Daily start time [hour, min]; use 5-minute intervals
-t_stop_hr_min = [20, 0]  # Daily stop time [hour, min]; use 5-minute intervals
+t_start_hr_min = [06, 55]  # Daily start time [hour, min]; use 5-minute intervals
+t_stop_hr_min =  [19, 05]  # Daily stop time [hour, min]; use 5-minute intervals
 
 # ===== On Demand Mode Settings =====
 # Run time [hours, minutes]; use 5-minute intervals
-t_on_demand_run_time = [0, 5]
+t_on_demand_run_time = [1, 0]
 rx_detect_min_v = 0.25         # Minimum RX level for On Demand request in volts
 rx_detect_min_t = 2.00         # Minimum RX time for On Demand request in seconds
 
@@ -86,6 +89,31 @@ def announce_time(t):
         msg[2] = 'AM'
     msg[0] = voice_hours[t_hour]
     msg[1] = voice_mins[t_min//5]
+    talk(msg, '/talk')
+
+
+def announce_time_hours(t):
+    t_local = time.localtime(t)
+    t_min = t_local.tm_min
+    t_hour = t_local.tm_hour
+    print(f"Announce Time (h:m): {t_hour}:{t_min}")
+    msg = ['?'] * 2
+    if t_hour >= 12:
+        msg[1] = 'PM'
+        t_hour = t_hour - 12
+    else:
+        msg[1] = 'AM'
+    msg[0] = voice_hours[t_hour]
+    talk(msg, '/talk')
+
+
+def announce_time_minutes(t):
+    t_local = time.localtime(t)
+    t_min = t_local.tm_min
+    t_hour = t_local.tm_hour
+    print(f"Announce Time (h:m): {t_hour}:{t_min}")
+    msg = ['?'] * 1
+    msg[0] = voice_mins[t_min//5]
     talk(msg, '/talk')
 
 
@@ -226,11 +254,11 @@ while True:
 
     if not(pb_hour.value):     # Hour button pushed
         t_now = t_now + 60*60  # Add 1 hour
-        announce_time(t_now)
+        announce_time_hours(t_now)
 
     if not(pb_min.value):      # Min button pushed
         t_now = t_now + 60*5   # Add 5 minutes
-        announce_time(t_now)
+        announce_time_minutes(t_now)
 
     if not(pb_run.value):      # Run button pushed
         time.sleep(1)
